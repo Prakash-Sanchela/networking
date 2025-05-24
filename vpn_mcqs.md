@@ -27,12 +27,18 @@ A VPN extends a private network across a public network (like the Internet) and 
 | **Tunnel Mode**    | Encrypts entire IP packet. Used in site-to-site VPNs.                                   |
 
 ## Types of VPN
-| Type                   | Use Case                                                                    |
-| ---------------------- | --------------------------------------------------------------------------- |
-| **Remote Access VPN**  | For individual users connecting securely to a company network from outside. |
-| **Site-to-Site VPN**   | Connects entire networks across different locations.                        |
-| **Client-to-Site VPN** | One client connects to entire site’s network securely.                      |
+| Type           | Ports/Protocol |
+| -----------    | -----|
+| **OpenVPN**    | 1194 |
+| **UDP**        | UDP  |
+| **IPsec/IKE**  | 500  |
+| **IPsec/IKEv2**  | UDP500  |
 
+## Port mapping 
+| Protocol           | Port                                                                             |
+| ------------------ | --------------------------------------------------------------------------------------- |
+| **Transport Mode** | Encrypts only the payload, leaves IP headers intact. Used for end-to-end communication. |
+| **Tunnel Mode**    | Encrypts entire IP packet. Used in site-to-site VPNs.                                   |
 Absolutely! Here's a set of **50 VPN-related multiple-choice questions (MCQs)** with correct answers marked. These cover **basic to intermediate** concepts to help you prepare for your exam.
 
 ---

@@ -1,0 +1,267 @@
+sonic-sairedis/saiplayer/SaiPlayer.cpp
+	|_int SaiPlayer::replay()
+		|_case SAI_OBJECT_TYPE_ROUTE_ENTRY:
+			status = handle_route(str_object_id, api, attr_count, attr_list);
+			|_
+
+Interface class
+
+class SaiInterface{
+	CREATE
+	REMOVE
+	...
+	...
+};
+derived by multiple class 
+
+class VendorSai : public SaiInterface{};
+class ClientServerSai : public SaiInterface{};
+class ClientSai : public sairedis::SaiInterface{};
+class ServerSai : public sairedis::SaiInterface{};
+
+m_sai = std::make_shared<Sai>(); // actual SAI to talk to syncd
+
+auto status = m_sai->initialize(flags, service_method_table);
+
+SAI API handles by syncd once received update from orchagent
+
+##############sample code to use
+sonic-sairedis/vslib/Sai.h
+
+switch (object_type)
+{
+    case SAI_OBJECT_TYPE_FDB_ENTRY:
+        status = handle_fdb(str_object_id, api, attr_count, attr_list);
+        break;
+
+    case SAI_OBJECT_TYPE_NEIGHBOR_ENTRY:
+        status = handle_neighbor(str_object_id, api, attr_count, attr_list);
+        break;
+
+    case SAI_OBJECT_TYPE_ROUTE_ENTRY:
+        status = handle_route(str_object_id, api, attr_count, attr_list);
+        break;
+
+    case SAI_OBJECT_TYPE_INSEG_ENTRY:
+        status = handle_inseg(str_object_id, api, attr_count, attr_list);
+        break;
+
+    default:
+
+        if (info->isnonobjectid)
+        {
+            SWSS_LOG_THROW("object %s:%s is non object id, but not handled, FIXME",
+                    sai_serialize_object_type(object_type).c_str(),
+                    str_object_id.c_str());
+        }
+
+        status = handle_generic(object_type, str_object_id, api, attr_count, attr_list);
+        break;
+}
+
+
+sai_status_t SaiPlayer::handle_route(
+        _In_ const std::string &str_object_id,
+        _In_ sai_common_api_t api,
+        _In_ uint32_t attr_count,
+        _In_ sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    sai_route_entry_t route_entry;
+    sai_deserialize_route_entry(str_object_id, route_entry);
+
+    route_entry.switch_id = translate_local_to_redis(route_entry.switch_id);
+    route_entry.vr_id = translate_local_to_redis(route_entry.vr_id);
+
+    switch (api)
+    {
+        case SAI_COMMON_API_CREATE:
+            return m_sai->create(&route_entry, attr_count, attr_list);
+
+        case SAI_COMMON_API_REMOVE:
+            return m_sai->remove(&route_entry);
+
+        case SAI_COMMON_API_SET:
+            return m_sai->set(&route_entry, attr_list);
+
+        case SAI_COMMON_API_GET:
+            return m_sai->get(&route_entry, attr_count, attr_list);
+
+        default:
+            SWSS_LOG_THROW("route other apis not implemented");
+    }
+
+
+##################Syncd Observer to orchagent
+Requiremtn :
+	- Supporting vendor specific ASIC apis. 
+1. Give one example of route add with how route table should looks like 
+Get route/neighbor/nexthop update from DB to orchagent.
+	|
+	|_How orchagent treats that data (check one data structure how it saves and mug it up)
+		|
+		|_How it gives the update to syncd
+			|
+			|_update(Enum SubjectType, void *ctx)
+				|
+				|_Here you need to check how will you use this ctx and populate data structure
+				|_How syncd will invoke SAI API based on input. 
+				|_Draw complete one flow with one data
+					switch (SubjectType)
+					{
+						case SAI_OBJECT_TYPE_FDB_ENTRY:
+							status = handle_fdb(str_object_id, api, attr_count, attr_list);
+							break;
+					
+						case SAI_OBJECT_TYPE_NEIGHBOR_ENTRY:
+							status = handle_neighbor(str_object_id, api, attr_count, attr_list);
+							break;
+					
+						case SAI_OBJECT_TYPE_ROUTE_ENTRY:
+							status = handle_route(str_object_id, api, attr_count, attr_list);
+							break;
+					
+						case SAI_OBJECT_TYPE_INSEG_ENTRY:
+							status = handle_inseg(str_object_id, api, attr_count, attr_list);
+							break;
+					
+						default:
+					
+							if (info->isnonobjectid)
+							{
+								SWSS_LOG_THROW("object %s:%s is non object id, but not handled, FIXME",
+										sai_serialize_object_type(object_type).c_str(),
+										str_object_id.c_str());
+							}
+					
+							status = handle_generic(object_type, str_object_id, api, attr_count, attr_list);
+							break;
+					}
+				
+				
+=============================================================
+enum SubjectType
+{
+    SUBJECT_TYPE_NEXTHOP_CHANGE,
+    SUBJECT_TYPE_NEIGH_CHANGE,
+    SUBJECT_TYPE_FDB_CHANGE,
+    SUBJECT_TYPE_LAG_MEMBER_CHANGE,
+    SUBJECT_TYPE_VLAN_MEMBER_CHANGE,
+    SUBJECT_TYPE_MIRROR_SESSION_CHANGE,
+    SUBJECT_TYPE_INT_SESSION_CHANGE,
+    SUBJECT_TYPE_PORT_CHANGE,
+    SUBJECT_TYPE_BRIDGE_PORT_CHANGE,
+    SUBJECT_TYPE_PORT_OPER_STATE_CHANGE,
+    SUBJECT_TYPE_ISOLATION_GROUP_CHANGE,
+    SUBJECT_TYPE_ISOLATION_GROUP_MEMBER_CHANGE,
+    SUBJECT_TYPE_ISOLATION_GROUP_BINDING_CHANGE,
+    SUBJECT_TYPE_MLAG_INTF_CHANGE,
+    SUBJECT_TYPE_MLAG_ISL_CHANGE,
+    SUBJECT_TYPE_FDB_FLUSH_CHANGE,
+    SUBJECT_TYPE_BFD_SESSION_STATE_CHANGE
+};
+#####Orchagent side 
+
+struct IpAddress{
+	uint8_t family;
+	union {
+		uint32_t ipv4_addr;
+		unsigned char ipv6_addr[16]; //16 is byte 128 bit
+	}ip_addr;
+};
+
+IPAddress       interface    mac_address       weight  
+192.169.10.10     Eth0         AA:BB:cc::ff     200
+struct NeighborEntry{
+	IpAddress           ip_address;     // neighbor IP address
+    string              alias;          // incoming interface alias
+    uint32_t            vni;            // Encap VNI overlay nexthop
+    MacAddress          mac_address;    // Overlay Nexthop MAC.
+    LabelStack          label_stack;    // MPLS label stack
+    uint32_t            weight;         // NH weight for NHGs
+    string              srv6_segment;   // SRV6 segment string
+    string              srv6_source;    // SRV6 source address
+	sai_common_api_t    api 
+
+	
+	// this has Getter and setter functions 
+	// Also it has overloaded comparator, ==, != operator to compare the objects 
+}
+
+ckass MACAddress{
+private:
+	uint8_t m_mac[6]; // 6 is 6 byte
+public:
+	//Getter setter also overloaded operator 
+};
+struct NeighborUpdate
+{
+    NeighborEntry entry;
+    MacAddress mac;
+    bool add;
+};			
+SUBJECT_TYPE_NEIGH_CHANGE
+
+bool NeighOrch::addNeighbor(NeighborContext& ctx)
+	|
+	|
+NeighborUpdate update = { neighborEntry, macAddress, true };
+notify(SUBJECT_TYPE_NEIGH_CHANGE, static_cast<void *>(&update)); -> Notify will update the observer. 
+
+====================================================================
+#######Syncd side
+====================================================================
+void Syncd::update(SubjectType type, void *ctx)
+switch (type)
+{
+    case SUBJECT_TYPE_FDB_CHANGE:
+        status = handle_fdb(str_object_id, api, attr_count, attr_list);
+        break;
+
+    case SUBJECT_TYPE_NEIGH_CHANGE:
+        status = handle_neighbor(type, ctx);
+        break;
+
+    case SUBJECT_TYPE_ROUTE_CHANGE:
+        status = handle_route(str_object_id, api, attr_count, attr_list);
+        break;
+}
+
+sai_status_t syncd::handle_neighbor(SubjectType type, void *ctx)
+{
+	neighborEntry *neighEntry = static_cast<neighborEntry*>(ctx);
+	attr_list = neighEntry->getAttr();
+	sai_neighbor_entry_api = upNeighEntry->getApi();
+	
+	switch (api)
+    {
+        case SAI_COMMON_API_CREATE:
+            return m_sai->create(&neighEntry, attr_list);
+			return m_sai->create_neighbor_entr(&neighEntry);
+
+        case SAI_COMMON_API_REMOVE:
+            return m_sai->remove(&neighEntry);
+
+        case SAI_COMMON_API_SET:
+            return m_sai->set(&neighEntry, attr_list);
+        default:
+            SWSS_LOG_THROW("no other neighbor apis implemented");
+    }
+}
+
+SAI_COMMON_API_CREATE
+SAI_COMMON_API_REMOVE
+SAI_COMMON_API_GET
+SAI_COMMON_API_SET
+// Data structures or STLs used in project
+MAP to save the key value pair of redis data
+
+###############ARCHITECTURE#############
+1. How process communicating with each other.
+	- SONiC uses one centralized in memory database called redis-db.
+	  which provides interface to the processes by which process can either act as publisher/subscriber to perticuler database. 
+	- netlink/sys file-system
+	- docker network and veth pair interfaces. 
+		- each docker container is connected to host via veth pairs and virtual brodges(ovs).
+		

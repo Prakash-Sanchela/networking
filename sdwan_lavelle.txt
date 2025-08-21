@@ -1,0 +1,91 @@
+1. NAT session maintainance
+
+int ppe_handle_nat( ln_mbuf_t **pkts, 
+					uint32_t npkts, 
+					uint32_t src_ip
+					);
+
+{
+	// number of packets
+	// pkts is array of ln_mbuf having information regarding packets
+	
+	// 1. loop through number of packets
+	// 2. get first packet
+	// 3. get the uflow id 
+	// 4. get the uflo from uflow id
+	// 5. if you don't find the uflow, drop the packet
+	// 6. extract the tuple and populate the parse information
+	// 		l4 protocol, s_ip, d_ip, s_port, d_port
+	// 7. do_nat()
+	// 8. populate the l4_proto_headers(), l3_headers, NAT details (NAT ip, NAT port)
+	// 9. replace the ip and port
+	// 10. check the checksum
+	// 10. calculate & update the checsum
+	
+	typedef struct ppe_usess_natb_ 
+	{
+		uint32_t    ip;
+		uint32_t    nat_ip;
+		uint16_t    port;
+		uint16_t    nat_port;
+	} ppe_usess_natb_t;
+
+	typedef struct {
+		uint8_t     l4_proto;
+		uint8_t     zero;
+		uint16_t    sport;
+		uint16_t    dport;
+		uint32_t    src_ip;
+		uint32_t    dst_ip;
+	} __attribute__((packed)) ppe_pkt_tuple_info_t;
+	
+}
+1. How NAT session has been maintained. 
+	- NAT session has been maintained using uflow structure
+		uflow
+			- session
+				- nat_binding
+					{
+						uint32_t ip,
+						uint32_t nat_ip,
+						uint16_t port,
+						uint16_t nat_port
+					}
+	- using uflow we are maintaining the normal ip and nat ip table. 
+	
+2. How dNAT is being done?
+4. what is uflow?
+	- underlay flow. 
+3. what is dynamic NAT?
+
+
+2. HA related
+typedef enum ppe_ha_failover_state {
+    PPE_HA_FAILOVER_INIT = 0,  // define by using node->state == PPE_HA_STATE_ACTIVE_ || node->state == PPE_HA_STATE_SECONDARY
+    PPE_HA_FAILOVER_START,
+    PPE_HA_FAILOVER_VIP_ACQUIRED,
+    PPE_HA_FAILOVER__DONE,
+    PPE_HA_FIALOVER_E2E_CONN_DONE,
+
+    PPE_HA_FAILOVER_STATE_MAX,
+} ppe_ha_failover_state_e;
+
+
+- lavell-ha-monitor service
+- ha_config.json
+	- read by cloud port and notify ppe to reload the configuration
+	
+- ha_monitor_result.json
+	this file is being watched by ha-monitor service
+	
+####
+UFlow
+	- Underlay Flow
+	- Handling data traffic over the underlay network
+	- Underlay network is the physical infra
+#################
+HIGH LEVEL ARCHITECTURE
+#################
+CP Cloud Port
+CS Cloud Station
+CPE Cloud Port Edge
